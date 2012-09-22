@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" >
 
-    <me.imid.preference.CheckBoxPreference
+    <me.imid.preference.SwitchButtonPreference
         android:defaultValue="true"
         android:enabled="false"
         android:summary="summary"
         android:title="MyCheckbox(disabled)" />
-    <me.imid.preference.CheckBoxPreference
+    <me.imid.preference.SwitchButtonPreference
         android:defaultValue="true"
         android:dependency="checkbox"
         android:summaryOff="off"
         android:summaryOn="on"
         android:title="MyCheckbox(enabled)" />
-    <me.imid.preference.CheckBoxPreference
+    <me.imid.preference.SwitchButtonPreference
         android:defaultValue="false"
         android:key="checkbox"
         android:summaryOff="off"

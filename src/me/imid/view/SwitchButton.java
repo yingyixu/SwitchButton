@@ -1,12 +1,11 @@
 package me.imid.view;
 
-import me.imid.R;
+import me.imid.movablecheckbox.R;
 import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
@@ -21,41 +20,39 @@ import android.view.ViewParent;
 import android.widget.CheckBox;
 
 public class SwitchButton extends CheckBox {
+
 	private Paint mPaint;
 	private ViewParent mParent;
+	private PorterDuffXfermode porterDuffXfermode;
 	private Bitmap bottom;
 	private Bitmap btn;
-	private Bitmap btn_pressed;
-	private Bitmap btn_unpressed;
+	private Bitmap pressedBtn;
+	private Bitmap normalBtn;
 	private Bitmap frame;
 	private Bitmap mask;
 
 	private float downY; // 首次按下的Y
 	private float downX; // 首次按下的X
-	private float realPos; // 图片的绘制位置
-	private float btnPos; // 按钮的位置
-	private float btnOnPos; // 开关打开的位置
-	private float btnOffPos; // 开关关闭的位置
-	private final float offsetY = 15; // Y轴方向扩大的区域
+	private float btnTopLeftX; // btn的左上角x
+	private float btnCurX; // 按钮当前所在x
+	private float btnLeftX; // 开关打开时btn所处的x
+	private float btnRightX; // 开关关闭时btn所处的x
+	private final float expandY = 15; // Y轴方向扩大触控有效区
 	private float maskWidth;
 	private float maskHeight;
 	private float btnWidth;
-	private float btnInitPos;
+	private float btnStartX;
 
 	private int mClickTimeout;
 	private int mTouchSlop;
 	private int mAlpha = 255;
 
 	private boolean mChecked = false;
-	private boolean mBroadcasting;
-	private boolean doTurnOnAni;
+	private boolean isBroadcasting = false;
+	private boolean isTurningOff = false;
 
-	private PerformClick mPerformClick;
-
+	private PerformClickTask mPerformClickTask;
 	private OnCheckedChangeListener mOnCheckedChangeListener;
-	private OnCheckedChangeListener mOnCheckedChangeWidgetListener;
-
-	private SetCheckedHandler setCheckedHandler = new SetCheckedHandler();
 
 	public SwitchButton(Context context, AttributeSet attrs) {
 		this(context, attrs, android.R.attr.checkboxStyle);
@@ -71,9 +68,9 @@ public class SwitchButton extends CheckBox {
 	}
 
 	private void initView(Context context) {
+
 		mPaint = new Paint();
-		mPaint.setColor(Color.WHITE);
-		Resources resources = context.getResources();
+		porterDuffXfermode = new PorterDuffXfermode(PorterDuff.Mode.SRC_IN);
 
 		// get viewConfiguration
 		mClickTimeout = ViewConfiguration.getPressedStateDuration()
@@ -81,48 +78,39 @@ public class SwitchButton extends CheckBox {
 		mTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
 
 		// get Bitmap
+		Resources resources = context.getResources();
 		bottom = BitmapFactory.decodeResource(resources, R.drawable.bottom);
-		btn_pressed = BitmapFactory.decodeResource(resources,
+		pressedBtn = BitmapFactory.decodeResource(resources,
 				R.drawable.btn_pressed);
-		btn_unpressed = BitmapFactory.decodeResource(resources,
+		normalBtn = BitmapFactory.decodeResource(resources,
 				R.drawable.btn_unpressed);
 		frame = BitmapFactory.decodeResource(resources, R.drawable.frame);
 		mask = BitmapFactory.decodeResource(resources, R.drawable.mask);
-		btn = btn_unpressed;
+		btn = normalBtn;
 
-		btnWidth = btn_pressed.getWidth();
+		btnWidth = pressedBtn.getWidth();
 		maskWidth = mask.getWidth();
 		maskHeight = mask.getHeight();
 
-		btnOffPos = btnWidth / 2;
-		btnOnPos = maskWidth - btnWidth / 2;
+		btnRightX = btnWidth / 2;
+		btnLeftX = maskWidth - btnWidth / 2;
 
-		btnPos = mChecked ? btnOnPos : btnOffPos;
-		realPos = getRealPos(btnPos);
+		btnCurX = mChecked ? btnLeftX : btnRightX;
+		btnTopLeftX = getBtnTopLeftX(btnCurX);
 	}
 
 	@Override
 	public void setEnabled(boolean enabled) {
-		// TODO Auto-generated method sstub
 		mAlpha = enabled ? 255 : 128;
 		super.setEnabled(enabled);
 	}
 
 	@Override
-	public boolean isEnabled() {
-		// TODO Auto-generated method stub
-		return super.isEnabled();
-	}
-
-	/**
-	 * 返回选中状态
-	 * 
-	 * @return 选中状态
-	 */
 	public boolean isChecked() {
 		return mChecked;
 	}
 
+	@Override
 	public void toggle() {
 		setChecked(!mChecked);
 	}
@@ -132,9 +120,14 @@ public class SwitchButton extends CheckBox {
 	 * 
 	 * @param checked
 	 */
-	private void _setChecked(boolean checked) {
-		int msg = checked ? 1 : 0;
-		setCheckedHandler.sendEmptyMessageDelayed(msg, 10);
+	private void setCheckedDelayed(final boolean checked) {
+		postDelayed(new Runnable() {
+
+			@Override
+			public void run() {
+				setChecked(checked);
+			}
+		}, 10);
 	}
 
 	/**
@@ -145,64 +138,29 @@ public class SwitchButton extends CheckBox {
 	 * @param checked
 	 *            true to check the button, false to uncheck it
 	 */
+	@Override
 	public void setChecked(boolean checked) {
 
-		if (mChecked != checked) {
-			mChecked = checked;
-
-			btnPos = checked ? btnOnPos : btnOffPos;
-			realPos = getRealPos(btnPos);
-			invalidate();
-
-			// Avoid infinite recursions if setChecked() is called from a
-			// listener
-			if (mBroadcasting) {
-				return;
-			}
-
-			mBroadcasting = true;
-			if (mOnCheckedChangeListener != null) {
-				mOnCheckedChangeListener.onCheckedChanged(SwitchButton.this,
-						mChecked);
-			}
-			if (mOnCheckedChangeWidgetListener != null) {
-				mOnCheckedChangeWidgetListener.onCheckedChanged(
-						SwitchButton.this, mChecked);
-			}
-
-			mBroadcasting = false;
-		}
-	}
-
-	private class SetCheckedHandler extends Handler {
-		@Override
-		public void handleMessage(Message msg) {
-			// TODO Auto-generated method stub
-			boolean checked = msg.what == 1;
-			if (mChecked != checked) {
-				mChecked = checked;
-
-				// Avoid infinite recursions if setChecked() is called from a
-				// listener
-				if (mBroadcasting) {
-					return;
-				}
-
-				mBroadcasting = true;
-				if (mOnCheckedChangeListener != null) {
-					mOnCheckedChangeListener.onCheckedChanged(
-							SwitchButton.this, mChecked);
-				}
-				if (mOnCheckedChangeWidgetListener != null) {
-					mOnCheckedChangeWidgetListener.onCheckedChanged(
-							SwitchButton.this, mChecked);
-				}
-
-				mBroadcasting = false;
-			}
-			super.handleMessage(msg);
+		if (mChecked == checked) {
+			return;
 		}
 
+		mChecked = checked;
+		btnCurX = checked ? btnLeftX : btnRightX;
+		btnTopLeftX = getBtnTopLeftX(btnCurX);
+		invalidate();
+
+		// Avoid infinite recursions if setChecked() is called from a listener
+		if (isBroadcasting) {
+			return;
+		}
+
+		isBroadcasting = true;
+		if (mOnCheckedChangeListener != null) {
+			mOnCheckedChangeListener.onCheckedChanged(SwitchButton.this,
+					mChecked);
+		}
+		isBroadcasting = false;
 	}
 
 	/**
@@ -212,73 +170,63 @@ public class SwitchButton extends CheckBox {
 	 * @param listener
 	 *            the callback to call on checked state change
 	 */
+	@Override
 	public void setOnCheckedChangeListener(OnCheckedChangeListener listener) {
 		mOnCheckedChangeListener = listener;
 	}
 
-	/**
-	 * Register a callback to be invoked when the checked state of this button
-	 * changes. This callback is used for internal purpose only.
-	 * 
-	 * @param listener
-	 *            the callback to call on checked state change
-	 * @hide
-	 */
-	void setOnCheckedChangeWidgetListener(OnCheckedChangeListener listener) {
-		mOnCheckedChangeWidgetListener = listener;
-	}
-
 	@Override
 	public boolean onTouchEvent(MotionEvent event) {
-		// TODO Auto-generated method stub
-		int action = event.getAction();
+
 		float x = event.getX();
 		float y = event.getY();
-		float deltaX = Math.abs(x - downX);
-		float deltaY = Math.abs(y - downY);
-		switch (action) {
-		case MotionEvent.ACTION_DOWN:
+		final float deltaX = Math.abs(x - downX);
+		final float deltaY = Math.abs(y - downY);
+
+		switch (event.getAction()) {
+		case MotionEvent.ACTION_DOWN: {
 			attemptClaimDrag();
 			downX = x;
 			downY = y;
-			btn = btn_pressed;
-			btnInitPos = mChecked ? btnOnPos : btnOffPos;
+			btn = pressedBtn;
+			btnStartX = mChecked ? btnLeftX : btnRightX;
 			break;
-		case MotionEvent.ACTION_MOVE:
-			float time = event.getEventTime() - event.getDownTime();
-			btnPos = btnInitPos + event.getX() - downX;
-			if (btnPos >= btnOffPos) {
-				btnPos = btnOffPos;
+		}
+		case MotionEvent.ACTION_MOVE: {
+			btnCurX = btnStartX + event.getX() - downX;
+			if (btnCurX >= btnRightX) {
+				btnCurX = btnRightX;
 			}
-			if (btnPos <= btnOnPos) {
-				btnPos = btnOnPos;
+			if (btnCurX <= btnLeftX) {
+				btnCurX = btnLeftX;
 			}
-			doTurnOnAni = btnPos > (btnOffPos - btnOnPos) / 2 + btnOnPos;
-
-			realPos = getRealPos(btnPos);
+			isTurningOff = btnCurX > ((btnRightX - btnLeftX) / 2 + btnLeftX);
+			btnTopLeftX = getBtnTopLeftX(btnCurX);
 			break;
-		case MotionEvent.ACTION_UP:
-			btn = btn_unpressed;
-			time = event.getEventTime() - event.getDownTime();
+		}
+		case MotionEvent.ACTION_UP: {
+			btn = normalBtn;
+			final float time = event.getEventTime() - event.getDownTime();
 			if (deltaY < mTouchSlop && deltaX < mTouchSlop
-					&& time < mClickTimeout) {
-				if (mPerformClick == null) {
-					mPerformClick = new PerformClick();
+					&& time < mClickTimeout) { // click
+				if (mPerformClickTask == null) {
+					mPerformClickTask = new PerformClickTask();
 				}
-				if (!post(mPerformClick)) {
+				if (!post(mPerformClickTask)) {
 					performClick();
 				}
 			} else {
-				btnAnimation.start(!doTurnOnAni);
+				btnAnimation.start(!isTurningOff);
 			}
 			break;
+		}
 		}
 
 		invalidate();
 		return isEnabled();
 	}
 
-	private final class PerformClick implements Runnable {
+	private final class PerformClickTask implements Runnable {
 		public void run() {
 			performClick();
 		}
@@ -286,7 +234,6 @@ public class SwitchButton extends CheckBox {
 
 	@Override
 	public boolean performClick() {
-		// TODO Auto-generated method stub
 		btnAnimation.start(!mChecked);
 		return true;
 	}
@@ -302,58 +249,83 @@ public class SwitchButton extends CheckBox {
 		}
 	}
 
-	/**
-	 * 将btnPos转换成RealPos
-	 * 
-	 * @param btnPos
-	 * @return
-	 */
-	private float getRealPos(float btnPos) {
-		return btnPos - btnWidth / 2;
+	private float getBtnTopLeftX(float btnX) {
+		return btnX - btnWidth / 2;
 	}
 
 	@Override
 	protected void onDraw(Canvas canvas) {
-		// TODO Auto-generated method stub
 		canvas.saveLayerAlpha(
-				new RectF(0, offsetY, mask.getWidth(), mask.getHeight()
-						+ offsetY), mAlpha, Canvas.MATRIX_SAVE_FLAG
+				new RectF(0, expandY, mask.getWidth(), mask.getHeight()
+						+ expandY), mAlpha, Canvas.MATRIX_SAVE_FLAG
 						| Canvas.CLIP_SAVE_FLAG
 						| Canvas.HAS_ALPHA_LAYER_SAVE_FLAG
 						| Canvas.FULL_COLOR_LAYER_SAVE_FLAG
 						| Canvas.CLIP_TO_LAYER_SAVE_FLAG);
+
 		// 绘制蒙板
-		canvas.drawBitmap(mask, 0, offsetY, mPaint);
-		mPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+		canvas.drawBitmap(mask, 0, expandY, mPaint);
+		mPaint.setXfermode(porterDuffXfermode);
 
 		// 绘制底部图片
-		canvas.drawBitmap(bottom, realPos, offsetY, mPaint);
+		canvas.drawBitmap(bottom, btnTopLeftX, expandY, mPaint);
 		mPaint.setXfermode(null);
+
 		// 绘制边框
-		canvas.drawBitmap(frame, 0, offsetY, mPaint);
+		canvas.drawBitmap(frame, 0, expandY, mPaint);
 
 		// 绘制按钮
-		canvas.drawBitmap(btn, realPos, offsetY, mPaint);
+		canvas.drawBitmap(btn, btnTopLeftX, expandY, mPaint);
 		canvas.restore();
 	}
 
 	@Override
 	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-		// TODO Auto-generated method stub
-		setMeasuredDimension((int) maskWidth, (int) (maskHeight + 2 * offsetY));
+		setMeasuredDimension((int) maskWidth, (int) (maskHeight + 2 * expandY));
 	}
 
 	// animation
 	private BtnAnimation btnAnimation = new BtnAnimation();
 
-	private class BtnAnimation extends IncrementAnimation {
+	private class BtnAnimation {
+
+		private static final int MSG_ANIMATE = 1000;
+		private static final int ANIMATION_FRAME_DURATION = 1000 / 60;
 		private final float INIT_VELOCITY = 400;
+
+		private boolean mAnimating = false;
+		private final Handler mHandler = new Handler() {
+			public void handleMessage(Message msg) {
+				switch (msg.what) {
+				case MSG_ANIMATE:
+					doAnimation();
+					break;
+				}
+			};
+		};
+
+		private float mAnimationLastTime;
+		private float mAnimationPosition;
+		private float mAnimatedVelocity;
+		private float mAnimatedAcceleration;
+		private long mCurrentAnimationTime;
+
+		private void increment() {
+			long now = SystemClock.elapsedRealtime();
+			float t = (now - mAnimationLastTime) / 1000.0f; // ms -> s
+			final float position = mAnimationPosition;
+			final float v = mAnimatedVelocity; // px/s
+			final float a = mAnimatedAcceleration; // px/s/s
+			mAnimationPosition = position + (v * t) + (0.5f * a * t * t);
+			mAnimatedVelocity = v + (a * t); // px/s
+			mAnimationLastTime = now; // ms
+		}
 
 		public void start(boolean doTurnOn) {
 			long now = SystemClock.uptimeMillis();
 			mAnimationLastTime = now;
 			mAnimatedVelocity = doTurnOn ? -INIT_VELOCITY : INIT_VELOCITY;
-			mAnimationPosition = btnPos;
+			mAnimationPosition = btnCurX;
 			mCurrentAnimationTime = now + ANIMATION_FRAME_DURATION;
 			mAnimating = true;
 
@@ -362,34 +334,30 @@ public class SwitchButton extends CheckBox {
 					mCurrentAnimationTime);
 		}
 
-		@Override
-		protected void doAnimation() {
-			// TODO Auto-generated method stub
+		private void doAnimation() {
 			if (mAnimating) {
-				incrementAnimation();
-				if (mAnimationPosition <= btnOnPos) {
+				increment();
+				if (mAnimationPosition <= btnLeftX) {
 					mAnimating = false;
-					mAnimationPosition = btnOnPos;
-					_setChecked(true);
-				} else if (mAnimationPosition >= btnOffPos) {
+					mAnimationPosition = btnLeftX;
+					setCheckedDelayed(true);
+				} else if (mAnimationPosition >= btnRightX) {
 					mAnimating = false;
-					mAnimationPosition = btnOffPos;
-					_setChecked(false);
+					mAnimationPosition = btnRightX;
+					setCheckedDelayed(false);
 				} else {
 					mCurrentAnimationTime += ANIMATION_FRAME_DURATION;
 					mHandler.sendMessageAtTime(
 							mHandler.obtainMessage(MSG_ANIMATE),
 							mCurrentAnimationTime);
 				}
-				moveView(mAnimationPosition);
+				invalidateView(mAnimationPosition);
 			}
 		}
 
-		@Override
-		protected void moveView(float position) {
-			// TODO Auto-generated method stub
-			btnPos = position;
-			realPos = getRealPos(btnPos);
+		private void invalidateView(float position) {
+			btnCurX = position;
+			btnTopLeftX = getBtnTopLeftX(btnCurX);
 			invalidate();
 		}
 

@@ -1,6 +1,6 @@
 package me.imid.preference;
 
-import me.imid.R;
+import me.imid.movablecheckbox.R;
 import me.imid.view.SwitchButton;
 import android.app.Service;
 import android.content.Context;
@@ -17,7 +17,7 @@ import android.widget.CompoundButton;
 import android.widget.CompoundButton.OnCheckedChangeListener;
 import android.widget.TextView;
 
-public class CheckBoxPreference extends android.preference.CheckBoxPreference {
+public class SwitchButtonPreference extends android.preference.CheckBoxPreference {
 	private Context mContext;
 	private int mLayoutResId = R.layout.preference;
 	private int mWidgetLayoutResId = R.layout.preference_widget_checkbox;
@@ -31,7 +31,7 @@ public class CheckBoxPreference extends android.preference.CheckBoxPreference {
 
 	private AccessibilityManager mAccessibilityManager;
 
-	public CheckBoxPreference(Context context, AttributeSet attrset,
+	public SwitchButtonPreference(Context context, AttributeSet attrset,
 			int defStyle) {
 		super(context, attrset);
 		mContext = context;
@@ -41,11 +41,11 @@ public class CheckBoxPreference extends android.preference.CheckBoxPreference {
 				.getSystemService(Service.ACCESSIBILITY_SERVICE);
 	}
 
-	public CheckBoxPreference(Context context, AttributeSet attrs) {
+	public SwitchButtonPreference(Context context, AttributeSet attrs) {
 		this(context, attrs, android.R.attr.checkBoxPreferenceStyle);
 	}
 
-	public CheckBoxPreference(Context context) {
+	public SwitchButtonPreference(Context context) {
 		this(context, null);
 	}
 
